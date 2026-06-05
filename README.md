@@ -10,21 +10,16 @@
 | **`start.bat`** | ▶️ 手动启动守护进程（有窗口，能看到实时状态） |
 | `start_hidden.vbs` | 👻 后台静默启动，`setup.bat` 装开机自启时用的就是它 |
 | `uninstall_autostart.bat` | ❌ 取消开机自启 |
+| `安装Python指南.txt` | 🐍 新手装 Python 的图文教程，`setup.bat` 没检测到 Python 会自动弹出来 |
 | `requirements.txt` | Python 依赖列表（`setup.bat` 会自动装，你不用管） |
 | `esurfing_pro/` | 📁 代码文件夹，不用打开 |
 
 ## 前置要求
 
-**什么都不用装** — `setup.bat` 会自动检测并安装 Python：
+**Python 3.9 以上**（只需装一次）。
 
-```
-双击 setup.bat
-  ├─ 检测到 Python → 跳过
-  └─ 没检测到 → winget 全自动静默安装
-       └─ 没有 winget → 自动下载安装包弹出窗口引导
-```
-
-唯一需要的是 **Windows 10 或以上**，其余全自动。
+- 如果没装，`setup.bat` 会自动弹出 **安装Python指南.txt**，照着做就行
+- 装过 Python 的话直接下一步
 
 ## 怎么用
 

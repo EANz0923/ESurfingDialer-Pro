@@ -1,19 +1,38 @@
 @echo off
-chcp 65001 >nul
-title ESurfingDialer-Pro 首次配置
+title ESurfingDialer-Pro Setup
 
 echo.
 echo    ======================================
-echo      ESurfingDialer-Pro  首次配置
+echo      ESurfingDialer-Pro  Setup
 echo    ======================================
 echo.
-echo    [1/2] 检查 Python 依赖...
-pip install -r requirements.txt -q 2>nul
-echo    [OK] 依赖就绪
+
+echo    [1/2] Installing Python dependencies...
 echo.
-echo    [2/2] 启动配置向导...
+pip install -r requirements.txt
+if %errorlevel% neq 0 (
+    echo.
+    echo    [FAIL] Dependency install failed!
+    echo    Make sure Python and pip are installed:
+    echo      https://www.python.org/downloads/
+    echo    Check "Add Python to PATH" during install.
+    echo.
+    pause
+    exit /b 1
+)
+echo.
+echo    [OK] Dependencies ready
+echo.
+
+echo    [2/2] Starting setup wizard...
 echo.
 
 python -m esurfing_pro.main setup
+if %errorlevel% neq 0 (
+    echo.
+    echo    [FAIL] Setup failed. See error above.
+    pause
+    exit /b 1
+)
 
 pause

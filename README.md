@@ -15,13 +15,16 @@
 
 ## 前置要求
 
-**必须安装 Python**（3.9 以上）：
+**什么都不用装** — `setup.bat` 会自动检测并安装 Python：
 
-1. 打开 https://www.python.org/downloads/
-2. 下载最新版安装包
-3. 运行安装，**勾选 "Add Python to PATH"**（最重要的一步！）
+```
+双击 setup.bat
+  ├─ 检测到 Python → 跳过
+  └─ 没检测到 → winget 全自动静默安装
+       └─ 没有 winget → 自动下载安装包弹出窗口引导
+```
 
-装好 Python 后，其余依赖 `setup.bat` 会自动帮你装。
+唯一需要的是 **Windows 10 或以上**，其余全自动。
 
 ## 怎么用
 

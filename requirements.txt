@@ -1,0 +1,20 @@
+# ESurfingDialer-Pro 依赖
+# 核心依赖
+requests>=2.28.0
+cryptography>=40.0.0
+
+# 可选: 网络监控
+psutil>=5.9.0
+
+# 可选: 网卡绑定支持
+netifaces>=0.11.0
+
+# 可选: 自定义 DNS 解析
+dnspython>=2.4.0
+
+# 系统托盘图标 (daemon --tray 模式)
+pystray>=0.19.0
+Pillow>=9.0.0
+
+# 可选: SM4/ZUC 国密算法 (已内置纯 Python 回退)
+# gmssl>=3.2.0

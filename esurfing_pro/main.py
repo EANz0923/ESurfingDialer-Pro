@@ -1,0 +1,383 @@
+"""
+CLI entry point for ESurfingDialer-Pro
+
+Usage:
+    python -m esurfing_pro.main setup       (首次使用向导)
+    python -m esurfing_pro.main daemon      (守护模式)
+    python -m esurfing_pro.main status      (查看配置)
+"""
+
+import argparse
+import logging
+import os
+import signal
+import sys
+import time
+
+from .client import ESurfingClient, ClientConfig, ClientManager
+from .config import load_config, create_example_config
+from .daemon import Daemon, ReloginMode
+
+# 设置日志格式
+LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
+LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+
+def setup_logging(verbose: bool = False):
+    """Setup logging with UTF-8 encoding for Windows compatibility"""
+    level = logging.DEBUG if verbose else logging.INFO
+    import io
+    # Wrap stdout/stderr so print() doesn't crash on Chinese in Windows console
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8',
+                                       errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8',
+                                       errors='replace')
+    logging.basicConfig(
+        level=level,
+        format=LOG_FORMAT,
+        datefmt=LOG_DATE_FORMAT,
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+
+
+def cmd_login(args):
+    """单次登录命令"""
+    configs = load_config(args.config)
+    if not configs:
+        print("ERROR: No valid configs found. Run 'example' first.")
+        sys.exit(1)
+
+    manager = ClientManager()
+    for c in configs:
+        client = manager.add(c)
+        client.on_log = lambda msg, lvl: print(f"  {msg}")
+
+    print(f"Logging in with {len(configs)} account(s)...")
+    manager.start_all()
+
+    # 等待连接
+    time.sleep(15)
+
+    for c in manager.clients:
+        status = c.get_status()
+        print(f"\n--- {status['username']} ---")
+        print(f"  State: {status['state']}")
+        print(f"  Online: {status['online_seconds']}s")
+        print(f"  Reconnects: {status['reconnect_count']}")
+
+    # 保持运行
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nStopping...")
+        manager.stop_all()
+
+
+def cmd_daemon(args):
+    """守护模式"""
+    configs = load_config(args.config)
+    if not configs:
+        print("ERROR: No valid configs found.")
+        sys.exit(1)
+
+    manager = ClientManager()
+    daemons = []
+
+    for c in configs:
+        client = manager.add(c)
+        d = Daemon(client)
+
+        # 配置重登模式
+        if args.mode:
+            mode = ReloginMode(args.mode)
+            kwargs = {}
+            if args.interval:
+                kwargs['interval'] = args.interval
+            if args.threshold:
+                kwargs['speed_threshold'] = args.threshold
+                kwargs['traffic_threshold'] = args.threshold
+            d.set_relogin(mode, **kwargs)
+
+        daemons.append(d)
+
+        # 在线状态变化回调
+        client.on_state_change = lambda s, c=client: \
+            print(f"[{c.config.username}] State: {s.value}")
+
+    print(f"Starting daemon with {len(daemons)} account(s)...")
+
+    # === Force initial login (don't trust pre-existing session) ===
+    import threading
+    for client in manager.clients:
+        print(f"  [{client.config.username}] Force initial login...")
+        success = client.login()
+        if success:
+            print(f"  [{client.config.username}] Login OK, heartbeat started")
+        else:
+            # Likely old session still alive (generate_204 returns 204, no redirect)
+            if client.is_online():
+                print(f"  [{client.config.username}] Old session still alive, internet is up")
+                print(f"  [{client.config.username}] Daemon monitoring - will re-auth when expired")
+            else:
+                print(f"  [{client.config.username}] Login FAILED, daemon will retry")
+
+    # === Start daemon threads (or use tray if requested) ===
+    use_tray = getattr(args, 'tray', False)
+
+    if use_tray and len(daemons) == 1:
+        # System tray mode: icon in notification area, no console window
+        try:
+            from .tray import TrayIcon
+            print("Starting in system tray mode (check notification area)...")
+            tray = TrayIcon(daemons[0], manager.clients[0])
+            tray.run()
+        except ImportError as e:
+            print(f"Tray dependencies missing: {e}")
+            print("Install with: pip install pystray Pillow")
+            print("Falling back to console mode...")
+            use_tray = False
+        except Exception as e:
+            print(f"Tray error: {e}, falling back to console mode...")
+            use_tray = False
+
+    if not use_tray:
+        import threading
+        for d in daemons:
+            t = threading.Thread(target=d.start, daemon=True)
+            t.start()
+
+        # 等待信号
+        def on_signal(sig, frame):
+            print("\nShutting down...")
+            for d in daemons:
+                d.stop()
+            manager.stop_all()
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, on_signal)
+        signal.signal(signal.SIGTERM, on_signal)
+
+        # 保持运行
+        try:
+            while True:
+                time.sleep(10)
+                # 打印状态
+                for c in manager.clients:
+                    s = c.get_status()
+                    online_m = s['online_seconds'] // 60
+                    print(f"[{s['username']}] {s['state']} | "
+                          f"online: {online_m}m | "
+                          f"hb: {s['heartbeat_count']}")
+        except KeyboardInterrupt:
+            print("\nStopping...")
+            for d in daemons:
+                d.stop()
+            manager.stop_all()
+
+
+def cmd_status(args):
+    """查看状态"""
+    configs = load_config(args.config)
+    if not configs:
+        print("No config found.")
+        return
+
+    for c in configs:
+        print(f"\nAccount: {c.username}")
+        print(f"  Bind: {c.bind_interface or 'default'}")
+        print(f"  Check interval: {c.check_interval}s")
+        print(f"  Retry interval: {c.retry_interval}s")
+
+
+def cmd_example(args):
+    """Generate example config"""
+    path = getattr(args, 'config', None) or "config.json"
+    create_example_config(path)
+
+
+def cmd_setup(args):
+    """交互式首次配置向导 — 输入账号密码即可完成全部设置"""
+    from .config import save_config, get_default_config_path
+
+    print()
+    print("=" * 50)
+    print("  ESurfingDialer-Pro  首次配置向导")
+    print("=" * 50)
+    print()
+    print("  此向导只需运行一次，之后无需再配置。")
+    print()
+
+    # --- 账号 ---
+    while True:
+        username = input("  请输入校园网账号 (学号): ").strip()
+        if username:
+            break
+        print("  [!] 账号不能为空，请重新输入")
+
+    # --- 密码 ---
+    while True:
+        password = input("  请输入校园网密码: ").strip()
+        if password:
+            break
+        print("  [!] 密码不能为空，请重新输入")
+
+    # --- 确认 ---
+    print()
+    print(f"  账号: {username}")
+    print(f"  密码: {'*' * len(password)}")
+    print()
+
+    # --- 检测间隔 (可选) ---
+    try:
+        interval = input("  断网检测间隔秒数 (默认10s，直接回车跳过): ").strip()
+        check_interval = int(interval) if interval else 10
+    except ValueError:
+        check_interval = 10
+
+    # --- 保存配置 ---
+    config_path = get_default_config_path()
+    config = ClientConfig(
+        username=username,
+        password=password,
+        check_interval=check_interval,
+        retry_interval=10,
+    )
+    save_config([config], config_path)
+    print(f"  [OK] 配置已保存到: {config_path}")
+    print()
+
+    # --- 开机自启 ---
+    choice = input("  是否安装开机自启? (每次开机自动后台联网) [Y/n]: ").strip().lower()
+    if choice != 'n':
+        _install_autostart()
+        print("  [OK] 开机自启已安装")
+    else:
+        print("  [--] 跳过开机自启 (以后可双击 install_autostart.bat 安装)")
+
+    # --- 立即启动 ---
+    print()
+    choice = input("  是否立即启动守护进程? [Y/n]: ").strip().lower()
+    if choice != 'n':
+        print()
+        print("  正在启动守护进程...")
+        print("  (按 Ctrl+C 可停止)")
+        print()
+        # 构造一个 fake args 传给 cmd_daemon
+        class FakeArgs:
+            config = config_path
+            mode = 'net'
+            tray = True
+            interval = None
+            threshold = None
+        cmd_daemon(FakeArgs())
+    else:
+        print()
+        print("  配置完成! 以后双击 start.bat 即可启动。")
+        print()
+
+
+def _install_autostart():
+    """在 Windows 启动文件夹创建自启脚本（bat，可见窗口）"""
+    startup_dir = os.path.join(
+        os.environ.get('APPDATA', ''),
+        r'Microsoft\Windows\Start Menu\Programs\Startup'
+    )
+    os.makedirs(startup_dir, exist_ok=True)
+    bat_path = os.path.join(startup_dir, 'ESurfingDialer-Pro.bat')
+
+    # 项目根目录的绝对路径 + Python 完整路径（避免启动时 PATH 未加载）
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    python_exe = sys.executable  # 完整 Python 路径，不依赖 PATH
+
+    bat_content = f'''@echo off
+cd /d "{project_dir}"
+start "" "{python_exe}" -m esurfing_pro.main daemon --mode net --tray
+'''
+
+    # 删掉旧的 vbs 版本（如果有）
+    old_vbs = os.path.join(startup_dir, 'ESurfingDialer-Pro.vbs')
+    if os.path.exists(old_vbs):
+        os.remove(old_vbs)
+
+    with open(bat_path, 'w', encoding='ascii') as f:
+        f.write(bat_content)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='ESurfingDialer-Pro v2.0 - Tianyi Campus Network Auth Client',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python -m esurfing_pro.main setup      (首次使用，输入账号密码即可)
+  python -m esurfing_pro.main daemon     (守护模式，断网自动重连)
+  python -m esurfing_pro.main status     (查看已保存的配置)
+        """,
+    )
+
+    parser.add_argument('-c', '--config', default=None,
+                       help='Config file path (default: ~/.esurfing_pro/config.json)')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                       help='Verbose output')
+
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+
+    # setup
+    subparsers.add_parser('setup', help='Interactive first-time setup wizard')
+
+    # login
+    login_parser = subparsers.add_parser('login', help='Login once and stay connected')
+    login_parser.add_argument('-c', '--config', default=None, help='Config file path')
+
+    # daemon
+    daemon_parser = subparsers.add_parser('daemon', help='Run as daemon with auto-relogin')
+    daemon_parser.add_argument('-c', '--config', default=None, help='Config file path')
+    daemon_parser.add_argument('--mode', choices=['net', 'itv', 'dls', 'uls', 'dlt', 'ult'],
+                              default='net', help='Relogin trigger mode (default: net)')
+    daemon_parser.add_argument('--tray', action='store_true',
+                              help='Run in system tray (notification area icon)')
+    daemon_parser.add_argument('--interval', type=int, default=None,
+                              help='Interval in seconds (for itv mode)')
+    daemon_parser.add_argument('--threshold', type=float, default=None,
+                              help='Speed (KB/s) or traffic (MB) threshold')
+
+    # status
+    status_parser = subparsers.add_parser('status', help='Show saved config')
+    status_parser.add_argument('-c', '--config', default=None, help='Config file path')
+
+    # example
+    example_parser = subparsers.add_parser('example', help='Create example config file')
+    example_parser.add_argument('-c', '--config', default=None, help='Output config file path')
+
+    args = parser.parse_args()
+
+    if not args.command:
+        try:
+            parser.print_help()
+        except UnicodeEncodeError:
+            print("ESurfingDialer-Pro v2.0 - Tianyi Campus Network Client")
+            print("Commands: setup, daemon, status")
+            print("Run with --help for details (use 'chcp 65001' on Windows)")
+        return
+
+    setup_logging(args.verbose)
+
+    commands = {
+        'setup': cmd_setup,
+        'login': cmd_login,
+        'daemon': cmd_daemon,
+        'status': cmd_status,
+        'example': cmd_example,
+    }
+
+    cmd_func = commands.get(args.command)
+    if cmd_func:
+        cmd_func(args)
+
+
+if __name__ == '__main__':
+    main()

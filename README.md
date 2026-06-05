@@ -54,3 +54,7 @@
 ## 致谢
 
 本项目基于 [Rsplwe/ESurfingDialer](https://github.com/Rsplwe/ESurfingDialer) 开发，感谢原作者的开源贡献。
+
+## 联系
+
+有问题或建议请联系：**easonmalone@hotmail.com**

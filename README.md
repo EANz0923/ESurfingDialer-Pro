@@ -18,14 +18,15 @@
 
 **Python 3.9 或以上**（3.9 / 3.10 / 3.11 / 3.12 / 3.13 都行）。
 
-**没装 Python？点这里下载：👇**
+**没装 Python？点这里下载（国内镜像，速度快）：👇**
 
-> 🔗 **[https://www.python.org/downloads/](https://www.python.org/downloads/)**
+> 🔗 **[https://mirrors.tuna.tsinghua.edu.cn/python/3.13.3/python-3.13.3-amd64.exe](https://mirrors.tuna.tsinghua.edu.cn/python/3.13.3/python-3.13.3-amd64.exe)**
 >
-> 用 Edge 浏览器打开 → 点黄色大按钮下载 → 安装时
-> **一定要勾选 ☑ Add Python to PATH**！！！
+> 安装时 **必须勾选 ☑ Add Python to PATH**！！！
 
-> ⚠️ **不要用 Microsoft Store 安装 Python！！！Store 版功能残缺，跑不了这个脚本。必须用上面官网地址下载。**
+> 💡 镜像下不动？备选：**[https://www.python.org/downloads/](https://www.python.org/downloads/)**
+
+> ⚠️ **禁止用 Microsoft Store 安装 Python！Store 版跑不了这个脚本。**
 
 > ⚠️ Python 3.8 及以下版本会报语法错误。查看版本：Win+R 输入 `cmd`，输入 `python --version`
 

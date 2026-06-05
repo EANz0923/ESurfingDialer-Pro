@@ -13,10 +13,21 @@
 | `requirements.txt` | Python 依赖列表（`setup.bat` 会自动装，你不用管） |
 | `esurfing_pro/` | 📁 代码文件夹，不用打开 |
 
+## 前置要求
+
+**必须安装 Python**（3.9 以上）：
+
+1. 打开 https://www.python.org/downloads/
+2. 下载最新版安装包
+3. 运行安装，**勾选 "Add Python to PATH"**（最重要的一步！）
+
+装好 Python 后，其余依赖 `setup.bat` 会自动帮你装。
+
 ## 怎么用
 
 ```
 第一步：双击 setup.bat
+        → 如果报错会提示缺什么，不会乱码了
         → 输入学号
         → 输入密码
         → 回车回车回车

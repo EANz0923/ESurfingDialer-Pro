@@ -18,11 +18,16 @@
 
 **Python 3.9 或以上**（3.9 / 3.10 / 3.11 / 3.12 / 3.13 都行）。
 
-> ⚠️ **新手注意**：Python 3.8 及以下版本会报语法错误！安装了低版本请先升级。
-> 不知道自己装的什么版本？Win+R 输入 `cmd`，然后输入 `python --version` 查看。
+**没装 Python？点这里下载：👇**
 
-- 如果没装，`setup.bat` 会自动弹出 **安装Python指南.txt**，照着做就行
-- 装过 Python 的话直接下一步
+> 🔗 **[https://www.python.org/downloads/](https://www.python.org/downloads/)**
+>
+> 用 Edge 浏览器打开 → 点黄色大按钮下载 → 安装时
+> **一定要勾选 ☑ Add Python to PATH**！！！
+
+> ⚠️ **不要用 Microsoft Store 安装 Python！！！Store 版功能残缺，跑不了这个脚本。必须用上面官网地址下载。**
+
+> ⚠️ Python 3.8 及以下版本会报语法错误。查看版本：Win+R 输入 `cmd`，输入 `python --version`
 
 ## 怎么用
 

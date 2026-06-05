@@ -38,3 +38,7 @@
 
 **打游戏影响吗？**
 - 不影响。占用 30MB 内存、0% CPU，每 10 秒才发一个几字节的小请求
+
+## 致谢
+
+本项目基于 [Rsplwe/ESurfingDialer](https://github.com/Rsplwe/ESurfingDialer) 开发，感谢原作者的开源贡献。

@@ -406,30 +406,33 @@ def cmd_setup(args):
 
 
 def _install_autostart():
-    """在 Windows 启动文件夹创建自启脚本（bat，可见窗口）"""
+    """在 Windows 启动文件夹创建自启脚本（VBS 静默启动，无窗口）"""
     startup_dir = os.path.join(
         os.environ.get('APPDATA', ''),
         r'Microsoft\Windows\Start Menu\Programs\Startup'
     )
     os.makedirs(startup_dir, exist_ok=True)
-    bat_path = os.path.join(startup_dir, 'ESurfingDialer-Pro.bat')
 
-    # 项目根目录的绝对路径 + Python 完整路径（避免启动时 PATH 未加载）
+    # 项目根目录的绝对路径 + pythonw.exe（无控制台窗口）
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    python_exe = sys.executable  # 完整 Python 路径，不依赖 PATH
+    python_dir = os.path.dirname(sys.executable)
+    pythonw_exe = os.path.join(python_dir, 'pythonw.exe')
 
-    bat_content = f'''@echo off
-cd /d "{project_dir}"
-start "" "{python_exe}" -m esurfing_pro.main daemon --mode net --tray
-'''
+    # VBS 脚本，第 2 个参数 0 = 隐藏窗口
+    vbs_path = os.path.join(startup_dir, 'ESurfingDialer-Pro.vbs')
+    vbs_content = (
+        f'CreateObject("WScript.Shell").Run '
+        f'"{pythonw_exe} -m esurfing_pro.main daemon --mode net --tray", '
+        f'0, False'
+    )
 
-    # 删掉旧的 vbs 版本（如果有）
-    old_vbs = os.path.join(startup_dir, 'ESurfingDialer-Pro.vbs')
-    if os.path.exists(old_vbs):
-        os.remove(old_vbs)
+    # 删掉旧的 bat 版本（如果有）
+    old_bat = os.path.join(startup_dir, 'ESurfingDialer-Pro.bat')
+    if os.path.exists(old_bat):
+        os.remove(old_bat)
 
-    with open(bat_path, 'w', encoding='ascii') as f:
-        f.write(bat_content)
+    with open(vbs_path, 'w', encoding='ascii') as f:
+        f.write(vbs_content)
 
 
 def main():

@@ -6,8 +6,8 @@ cryptography>=40.0.0
 # 可选: 网络监控
 psutil>=5.9.0
 
-# 可选: 网卡绑定支持
-netifaces>=0.11.0
+# 可选: 网卡绑定支持（需要 Visual C++ Build Tools 才能编译，已默认禁用）
+# netifaces>=0.11.0
 
 # 可选: 自定义 DNS 解析
 dnspython>=2.4.0

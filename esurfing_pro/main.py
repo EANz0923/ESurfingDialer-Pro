@@ -284,7 +284,11 @@ def cmd_daemon(args):
             sys.exit(0)
 
         signal.signal(signal.SIGINT, on_signal)
-        signal.signal(signal.SIGTERM, on_signal)
+        if hasattr(signal, 'SIGTERM'):
+            try:
+                signal.signal(signal.SIGTERM, on_signal)
+            except (ValueError, OSError):
+                pass  # SIGTERM 在部分 Windows 环境不支持
 
         # 保持运行
         try:
@@ -421,6 +425,7 @@ def _install_autostart():
     bat_path = os.path.join(startup_dir, 'ESurfingDialer-Pro.bat')
     bat_content = (
         f'@echo off\r\n'
+        f'chcp 65001 >nul\r\n'
         f'cd /d "{project_dir}"\r\n'
         f'start "" /b "{pythonw_exe}"'
         f' -m esurfing_pro.main daemon --mode net --tray\r\n'

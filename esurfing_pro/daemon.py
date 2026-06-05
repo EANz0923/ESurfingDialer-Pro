@@ -158,13 +158,13 @@ class Daemon:
         self.client.logout()
         time.sleep(2)
         success = self.client.login()
-        self._last_relogin = time.time()
         if success:
+            self._last_relogin = time.time()
             self.monitor.reset_counters()
         else:
-            # 失败后额外冷却，避免疯狂重试
+            # 失败后额外冷却 30s，避免疯狂重试
             logger.warning(f"Relogin failed, cooling down for 30s")
-            self._last_relogin = time.time() + 20  # 延长冷却
+            self._last_relogin = time.time() + 30
         return success
 
     _last_relogin: float = 0.0

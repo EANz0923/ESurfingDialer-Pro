@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "BAT=%STARTUP%\ESurfingDialer-Pro.bat"
 set "VBS=%STARTUP%\ESurfingDialer-Pro.vbs"

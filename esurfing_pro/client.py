@@ -193,6 +193,9 @@ class ESurfingClient:
     def login(self) -> bool:
         """手动执行一次登录 (非阻塞，线程安全)"""
         with self._lock:
+            # 确保 _running 标志已设置，否则 _schedule_heartbeat() 不会调度心跳
+            self._running = True
+            self._stop_event.clear()
             try:
                 self._init_network()
                 self._init_identity()

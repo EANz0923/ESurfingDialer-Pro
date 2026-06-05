@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 title ESurfingDialer-Pro Setup
 
 echo.
@@ -26,7 +27,7 @@ echo.
 
 :: --- Install dependencies (using Tsinghua mirror for speed) ---
 echo    [1/2] Installing dependencies (Tsinghua mirror)...
-pip install -r "%~dp0requirements.txt" -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -r "%~dp0requirements.txt" -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 if %errorlevel% neq 0 (
     echo.
     echo    [FAIL] Dependency install failed.

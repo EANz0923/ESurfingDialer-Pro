@@ -9,6 +9,8 @@ Shows a colored dot in the notification area:
 Right-click menu: status display + exit.
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 import time

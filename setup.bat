@@ -24,9 +24,9 @@ exit /b 1
 echo    [OK] Python found
 echo.
 
-:: --- Install dependencies ---
-echo    [1/2] Installing dependencies...
-pip install -r "%~dp0requirements.txt"
+:: --- Install dependencies (using Tsinghua mirror for speed) ---
+echo    [1/2] Installing dependencies (Tsinghua mirror)...
+pip install -r "%~dp0requirements.txt" -i https://pypi.tuna.tsinghua.edu.cn/simple
 if %errorlevel% neq 0 (
     echo.
     echo    [FAIL] Dependency install failed.

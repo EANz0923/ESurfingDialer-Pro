@@ -11,7 +11,7 @@ if %errorlevel% neq 0 (
 python -c "import requests" >nul 2>&1
 if %errorlevel% neq 0 (
     echo Installing dependencies...
-    pip install -r "%~dp0requirements.txt"
+    pip install -r "%~dp0requirements.txt" -i https://pypi.tuna.tsinghua.edu.cn/simple
 )
 
 cd /d "%~dp0"

@@ -14,7 +14,7 @@ import signal
 import sys
 import time
 
-from .client import ESurfingClient, ClientConfig, ClientManager
+from .client import ESurfingClient, ClientConfig, ClientManager, ClientState
 from .config import load_config, create_example_config
 from .daemon import Daemon, ReloginMode
 
@@ -130,6 +130,31 @@ def _wait_for_network_ready(timeout: int = 120) -> bool:
     return False
 
 
+def _check_really_online() -> bool:
+    """用独立 session 检测是否真的在线（不受认证流程 cookie 干扰）
+
+    认证失败后，NetworkClient session 里残留的 cookie 可能导致
+    generate_204 返回 204 而非 302，造成 is_online() 假阳性。
+    此函数用全新的 requests session 做检测。
+    """
+    import requests
+
+    test_urls = [
+        "http://connect.rom.miui.com/generate_204",
+        "http://www.gstatic.com/generate_204",
+    ]
+
+    with requests.Session() as s:
+        for url in test_urls:
+            try:
+                resp = s.get(url, timeout=5, allow_redirects=False)
+                if resp.status_code == 204:
+                    return True
+            except requests.RequestException:
+                continue
+    return False
+
+
 def cmd_daemon(args):
     """守护模式"""
     configs = load_config(args.config)
@@ -166,20 +191,38 @@ def cmd_daemon(args):
     # === 等待网络就绪（开机自启时网卡/portal 可能未初始化）===
     _wait_for_network_ready(timeout=120)
 
-    # === Force initial login (don't trust pre-existing session) ===
-    import threading
+    # === Initial login with retries ===
+    # 部分认证后 session 残留 cookie 会导致 is_online() 假阳性，
+    # 所以用独立 requests 做真实性检测，不受 NetworkClient session 影响。
+    MAX_RETRIES = 3
+    RETRY_DELAYS = [2, 5, 10]  # 递增等待
+
     for client in manager.clients:
         print(f"  [{client.config.username}] Force initial login...")
-        success = client.login()
-        if success:
-            print(f"  [{client.config.username}] Login OK, heartbeat started")
-        else:
-            # Likely old session still alive (generate_204 returns 204, no redirect)
-            if client.is_online():
-                print(f"  [{client.config.username}] Old session still alive, internet is up")
+
+        for attempt in range(MAX_RETRIES):
+            success = client.login()
+            if success:
+                print(f"  [{client.config.username}] Login OK, heartbeat started")
+                break
+
+            # 用独立的 requests 检测是否真的在线（避免 session cookie 干扰）
+            really_online = _check_really_online()
+            if really_online:
+                print(f"  [{client.config.username}] Already online (old session alive)")
                 print(f"  [{client.config.username}] Daemon monitoring - will re-auth when expired")
+                # 手动把状态设为 connected，让 daemon 正常工作
+                client.state = ClientState.CONNECTED
+                break
+
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_DELAYS[attempt]
+                print(f"  [{client.config.username}] Login failed, "
+                      f"retry in {delay}s (attempt {attempt + 2}/{MAX_RETRIES})...")
+                time.sleep(delay)
             else:
-                print(f"  [{client.config.username}] Login FAILED, daemon will retry")
+                print(f"  [{client.config.username}] Login FAILED after "
+                      f"{MAX_RETRIES} attempts, daemon will keep retrying")
 
     # === Start daemon threads (or use tray if requested) ===
     use_tray = getattr(args, 'tray', False)

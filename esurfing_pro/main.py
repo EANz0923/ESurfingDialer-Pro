@@ -77,6 +77,59 @@ def cmd_login(args):
         manager.stop_all()
 
 
+def _wait_for_network_ready(timeout: int = 120) -> bool:
+    """等待网络就绪（开机自启时网卡可能尚未初始化）
+
+    检测方法：尝试连接多个 portal 探测 URL，只要能收到 HTTP 响应即为就绪。
+    开机时 DHCP 可能还没拿到 IP，portal 可能还没启动——此函数会轮询等待。
+
+    Args:
+        timeout: 最长等待秒数
+
+    Returns:
+        网络是否就绪
+    """
+    import requests
+
+    # 测试 URL（只需要能建立 TCP 连接+收到 HTTP 响应，不用管状态码）
+    test_urls = [
+        "http://connect.rom.miui.com/generate_204",
+        "http://www.gstatic.com/generate_204",
+        "http://captive.apple.com/hotspot-detect.html",
+        "http://cp.cloudflare.com/generate_204",
+    ]
+
+    start_time = time.time()
+    attempt = 0
+
+    print("  Waiting for network to be ready...")
+
+    while time.time() - start_time < timeout:
+        attempt += 1
+
+        for url in test_urls:
+            try:
+                resp = requests.get(url, timeout=5, allow_redirects=False)
+                # 只要能收到 HTTP 响应（不管 204/302/200），就说明网络通了
+                elapsed = time.time() - start_time
+                print(f"  Network ready after {elapsed:.1f}s "
+                      f"(HTTP {resp.status_code}, attempt {attempt})")
+                return True
+            except requests.RequestException:
+                continue
+
+        # 指数退避，但不超过 10 秒
+        wait = min(2 ** (attempt - 1), 10)
+        print(f"  Network not ready, retrying in {wait}s "
+              f"(attempt {attempt}, "
+              f"elapsed {time.time() - start_time:.0f}s)")
+        time.sleep(wait)
+
+    print(f"  Network still not ready after {timeout}s, "
+          f"will attempt login anyway")
+    return False
+
+
 def cmd_daemon(args):
     """守护模式"""
     configs = load_config(args.config)
@@ -109,6 +162,9 @@ def cmd_daemon(args):
             print(f"[{c.config.username}] State: {s.value}")
 
     print(f"Starting daemon with {len(daemons)} account(s)...")
+
+    # === 等待网络就绪（开机自启时网卡/portal 可能未初始化）===
+    _wait_for_network_ready(timeout=120)
 
     # === Force initial login (don't trust pre-existing session) ===
     import threading

@@ -6,7 +6,13 @@ cryptography>=40.0.0
 # 可选: 网络监控
 psutil>=5.9.0
 
-# 可选: 网卡绑定支持（需要 Visual C++ Build Tools 才能编译，已默认禁用）
+# 可选: 网卡绑定支持（普通用户不需要！只有多网卡/虚拟机才用）
+#
+# 启用条件：必须安装 Microsoft Visual C++ Build Tools
+#   下载地址：https://visualstudio.microsoft.com/visual-cpp-build-tools/
+#   （微软官方，无国内镜像。安装时选"Desktop development with C++"）
+#   体积约 2GB，安装耗时较长。不需要网卡绑定就别折腾。
+#
 # netifaces>=0.11.0
 
 # 可选: 自定义 DNS 解析

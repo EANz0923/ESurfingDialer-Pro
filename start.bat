@@ -3,7 +3,7 @@ title ESurfingDialer-Pro
 
 where python >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Python not found. Please install from https://www.python.org/downloads/
+    echo Python not found. Please install from https://mirrors.tuna.tsinghua.edu.cn/python/3.13.3/python-3.13.3-amd64.exe
     pause
     exit /b 1
 )

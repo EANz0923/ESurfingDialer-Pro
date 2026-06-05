@@ -15,11 +15,11 @@
 第一步：下载 Python（用 Edge 浏览器打开）
 --------------------------------------------------
 
-官网下载地址：
-https://www.python.org/downloads/
+国内镜像下载（速度快）：
+https://mirrors.tuna.tsinghua.edu.cn/python/3.13.3/python-3.13.3-amd64.exe
 
-页面会自动推荐最新版本，点黄色大按钮下载
-（文件名类似 python-3.12.x-amd64.exe）
+备选：
+https://www.python.org/downloads/
 
 
 --------------------------------------------------

@@ -131,11 +131,15 @@ def _wait_for_network_ready(timeout: int = 120) -> bool:
 
 
 def _check_really_online() -> bool:
-    """用独立 session 检测是否真的在线（不受认证流程 cookie 干扰）
+    """用独立 session 检测是否真的在线（排除假在线/portal 白名单绕过）
 
     认证失败后，NetworkClient session 里残留的 cookie 可能导致
     generate_204 返回 204 而非 302，造成 is_online() 假阳性。
     此函数用全新的 requests session 做检测。
+
+    检测策略:
+      1. 标准 portal URL → 302 = captive portal → 不在线
+      2. Canary URL + 内容验证 → 排除白名单绕过
     """
     import requests
 
@@ -144,14 +148,36 @@ def _check_really_online() -> bool:
         "http://www.gstatic.com/generate_204",
     ]
 
+    # Phase 1: 标准 portal 探测
     with requests.Session() as s:
         for url in test_urls:
             try:
                 resp = s.get(url, timeout=5, allow_redirects=False)
-                if resp.status_code == 204:
-                    return True
+                if resp.status_code == 302:
+                    return False  # Portal 劫持
+                # 204 不直接判定在线，继续验证
             except requests.RequestException:
                 continue
+
+    # Phase 2: Canary URL — 非 portal 探测域名，校园网不会白名单
+    canary_checks = [
+        ("http://httpbin.org/ip", '"origin"'),
+        ("http://neverssl.com/", "NeverSSL"),
+        ("http://example.com/", "Example Domain"),
+    ]
+
+    with requests.Session() as s:
+        for url, expected in canary_checks:
+            try:
+                resp = s.get(url, timeout=5, allow_redirects=False)
+                if resp.status_code == 302:
+                    return False  # Portal 劫持 → 假在线
+                elif resp.status_code == 200:
+                    if expected in resp.text:
+                        return True  # 内容匹配 → 真正在线
+            except requests.RequestException:
+                continue
+
     return False
 
 

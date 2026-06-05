@@ -9,6 +9,7 @@
 """
 
 import hashlib
+import json
 import logging
 import socket
 from typing import Optional
@@ -27,6 +28,15 @@ PORTAL_TEST_URLS = [
     "http://captive.apple.com/hotspot-detect.html",  # Apple
     "http://www.msftconnecttest.com/connecttest.txt",  # Microsoft
     "http://cp.cloudflare.com/generate_204",      # Cloudflare
+]
+
+# Canary URL — 非 portal 探测域名，用于检测「假在线」
+# 校园网可能把 generate_204 加白名单（未认证也放行），但不会白名单这些
+# 302 = captive portal 劫持，200 + 预期内容 = 真正在线
+CANARY_CHECKS = [
+    ("http://httpbin.org/ip", '"origin"'),         # JSON: {"origin": "x.x.x.x"}
+    ("http://neverssl.com/", "NeverSSL"),           # 故意不用 HTTPS 的网站
+    ("http://example.com/", "Example Domain"),      # 最简页面
 ]
 
 
@@ -137,7 +147,12 @@ class NetworkClient:
         )
 
     def get_redirect_url(self) -> Optional[str]:
-        """检测是否有 portal 重定向 (依次尝试多个已知 URL)"""
+        """检测是否有 portal 重定向 (标准 URL + canary URL 双层检测)
+
+        校园网可能把 generate_204 类 URL 加白名单（未认证也放行），
+        因此不能仅凭 204 就断定在线。增加 canary URL 做二次验证。
+        """
+        # Phase 1: 标准 portal 探测 URL
         for url in PORTAL_TEST_URLS:
             try:
                 resp = self.session.get(
@@ -147,16 +162,37 @@ class NetworkClient:
                 )
                 if resp.status_code == 302:
                     return resp.headers.get('Location', '')
-                elif resp.status_code == 204:
-                    # 已在线, 无需重定向
-                    return None
+                # 204 可能是真在线，也可能是白名单绕过 → 继续验证
             except requests.RequestException:
                 continue
-        return None
+
+        # Phase 2: Canary URL — 非 portal 探测域名
+        # 如果校园网白名单了 generate_204，canary URL 仍会被 portal 劫持
+        for url, _expected in CANARY_CHECKS:
+            try:
+                resp = self.session.get(
+                    url,
+                    timeout=self.timeout,
+                    allow_redirects=False,
+                )
+                if resp.status_code == 302:
+                    # 被重定向 = portal 存在！用户处于假在线状态
+                    return resp.headers.get('Location', '')
+                # 200 = 真正能访问外网 → 确实在线
+            except requests.RequestException:
+                continue
+
+        return None  # 无 portal → 真正在线
 
     def check_online(self) -> bool:
-        """检查网络是否在线 (已认证状态, 带重试与回退)"""
-        # 策略 1: 用多个已知 URL 检测 portal
+        """检查是否真正在线 (排除假在线/portal 白名单绕过)
+
+        三层检测:
+          1. 标准 portal URL — 302 = portal 存在 → 不在线
+          2. Canary URL + 内容验证 — 校园网不会白名单这些域名
+          3. 兜底 — 跟重定向后验证响应内容
+        """
+        # Phase 1: 标准 portal 探测 — 302 说明有 captive portal
         for url in PORTAL_TEST_URLS:
             try:
                 resp = self.session.get(
@@ -164,17 +200,39 @@ class NetworkClient:
                     timeout=self.timeout,
                     allow_redirects=False,
                 )
-                if resp.status_code == 204:
-                    return True
+                if resp.status_code == 302:
+                    return False  # Portal 劫持 → 不在线
+                elif resp.status_code == 204:
+                    # 可能是真在线，也可能是白名单绕过 → 继续验证
+                    pass
                 elif resp.status_code == 200:
-                    # 某些探测 URL 返回 200 (如 Apple 的 hotspot-detect.html)
                     body = resp.text.strip()
                     if body == "Success" or "Success" in body:
-                        return True
+                        # 同上，需要二次验证
+                        pass
             except requests.RequestException:
                 continue
 
-        # 策略 2: 回退 — 尝试 DNS 解析 (发一个 HTTP 请求到公共服务器)
+        # Phase 2: Canary URL + 内容验证
+        # 关键：allow_redirects=False，所以 portal 劫持会返回 302 而非 200
+        # 如果返回 200，验证内容确保不是 portal 登录页冒充
+        for url, expected in CANARY_CHECKS:
+            try:
+                resp = self.session.get(
+                    url,
+                    timeout=self.timeout,
+                    allow_redirects=False,
+                )
+                if resp.status_code == 302:
+                    return False  # Portal 劫持 → 假在线
+                elif resp.status_code == 200:
+                    if expected in resp.text:
+                        return True  # 真正在线
+                    # 内容不匹配 → 可能是 portal 登录页 → 不在线
+            except requests.RequestException:
+                continue
+
+        # Phase 3: 兜底 — 允许重定向但验证内容
         try:
             resp = self.session.get(
                 "http://httpbin.org/ip",
@@ -182,7 +240,12 @@ class NetworkClient:
                 allow_redirects=True,
             )
             if resp.status_code == 200:
-                return True
+                try:
+                    data = resp.json()
+                    if 'origin' in data:
+                        return True
+                except (ValueError, Exception):
+                    pass
         except requests.RequestException:
             pass
 

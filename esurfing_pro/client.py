@@ -138,6 +138,7 @@ class ESurfingClient:
         self._stop_event = threading.Event()
         self._lock = threading.RLock()          # 可重入锁，保护 login/logout/heartbeat 互斥
         self._relogin_cooldown: float = 0.0     # 防止短时间内反复重登
+        self._last_error: str = ""              # 最后一次登录失败的错误消息
 
         # 回调
         self.on_state_change: Optional[Callable] = None
@@ -206,6 +207,7 @@ class ESurfingClient:
                 self._relogin_cooldown = time.time() + 10  # 10s 冷却
                 return True
             except Exception as e:
+                self._last_error = str(e)
                 logger.error(f"Login failed: {e}")
                 self._set_state(ClientState.ERROR)
                 self._relogin_cooldown = time.time() + 5   # 失败也冷却 5s

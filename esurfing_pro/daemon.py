@@ -83,7 +83,6 @@ class Daemon:
                 if self.mode:
                     should_relogin = self._check_trigger()
                     if should_relogin:
-                        logger.info(f"Trigger [{self.mode.value}]: re-logging in...")
                         self._do_relogin()
 
                 self._stop_event.wait(poll_interval)
@@ -148,23 +147,37 @@ class Daemon:
         return total >= self.traffic_threshold
 
     def _do_relogin(self):
-        """执行重登 (线程安全)"""
-        # 防止短时间内反复重登
+        """执行重登 (线程安全) — ZUC 失败时立即重试，服务器可能换算法"""
+        # 防止短时间内反复重登（非 ZUC 失败）
         now = time.time()
-        if now < self._last_relogin + 10:  # 至少间隔 10 秒
-            logger.debug("Relogin skipped: still in cooldown")
-            return False
+        if now < self._last_relogin + 10:
+            # ZUC 失败可以跳过冷却：服务器每次可能分配不同算法
+            if not self._last_was_zuc_fail:
+                logger.debug("Relogin skipped: still in cooldown")
+                return False
+            self._last_was_zuc_fail = False
 
+        logger.info(f"Trigger [{self.mode.value}]: re-logging in...")
         self.client.logout()
         time.sleep(2)
         success = self.client.login()
         if success:
             self._last_relogin = time.time()
+            self._last_was_zuc_fail = False
             self.monitor.reset_counters()
         else:
-            # 失败后额外冷却 30s，避免疯狂重试
-            logger.warning(f"Relogin failed, cooling down for 30s")
-            self._last_relogin = time.time() + 30
+            self._last_relogin = time.time()
+            # ZUC 失败 (no element found) → 缩短冷却到 5s，给服务器换算法
+            if 'no element found' in str(getattr(self.client, '_last_error', '')):
+                logger.warning("Relogin failed (ZUC mismatch), retrying soon...")
+                self._last_relogin = time.time() - 5  # 5s 后重试
+                self._last_was_zuc_fail = True
+            else:
+                logger.warning("Relogin failed, cooling down for 30s")
+                self._last_relogin = time.time() + 20  # 等价 30s 冷却
+                self._last_was_zuc_fail = False
         return success
+
+    _last_was_zuc_fail: bool = False
 
     _last_relogin: float = 0.0

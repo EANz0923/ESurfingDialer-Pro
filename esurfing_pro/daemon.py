@@ -114,11 +114,16 @@ class Daemon:
         return False
 
     def _check_net(self) -> bool:
-        """检查是否断网 (带冷却保护)"""
-        # 防止刚登录/重登完成后立即再次触发
+        """检查是否需要重登 (靠心跳失败检测，不主动发 HTTP 探测)
+
+        原版 Java 的策略：只靠心跳维持连接，心跳失败 → 状态切 DISCONNECTED
+        → daemon 检测到后重登。不额外发 HTTP 请求测网速，避免网络波动误判。
+        """
         if time.time() < self.client._relogin_cooldown:
             return False
-        return not self.client.is_online()
+        # 只有当内部状态已经是 DISCONNECTED 时才触发重登
+        # (心跳模块发现断网会自动切状态)
+        return self.client.state == ClientState.DISCONNECTED
 
     def _check_itv(self) -> bool:
         """检查是否到达定时重登时间"""

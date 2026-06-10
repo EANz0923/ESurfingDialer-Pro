@@ -330,19 +330,40 @@ class ESurfingClient:
 
         return parse_econfig(resp.content)
 
-    def _negotiate_algo(self) -> str:
-        """Step 4: 协商加密算法"""
-        resp = self.network.post_raw(
-            self.ticket_url,
-            self.algo_id.encode(),
-            self.client_id,
-            self.algo_id,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"Algo negotiation failed: {resp.status_code}")
+    # XTEA 系列算法已知有兼容问题，协商到就重试换一个
+    _XTEA_ALGOS = {
+        "B3047D4E-67DF-4864-A6A5-DF9B9E525C79",  # XTea
+        "C32C68F9-CA81-4260-A329-BBAFD1A9CCD1",  # XTeaIv
+    }
 
-        algo_id, key = parse_algo_id(resp.content)
-        logger.debug(f"Negotiated algo_id={algo_id}, key_len={len(key)}")
+    def _negotiate_algo(self) -> str:
+        """Step 4: 协商加密算法（避开 XTEA 系列）"""
+        for attempt in range(5):
+            resp = self.network.post_raw(
+                self.ticket_url,
+                self.algo_id.encode(),
+                self.client_id,
+                self.algo_id,
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Algo negotiation failed: {resp.status_code}")
+
+            algo_id, key = parse_algo_id(resp.content)
+            logger.debug(f"Negotiated algo_id={algo_id}, key_len={len(key)}")
+
+            if algo_id in self._XTEA_ALGOS and attempt < 4:
+                logger.warning(
+                    f"[user:{self.config.username}] "
+                    f"Got XTEA algo, retrying negotiation "
+                    f"(attempt {attempt + 1})..."
+                )
+                self._init_identity()  # 换 client_id 重新来
+                time.sleep(0.5)
+                continue
+
+            return algo_id
+
+        # 最后尝试仍然 XTEA，只能接受
         return algo_id
 
     def _get_ticket(self) -> str:

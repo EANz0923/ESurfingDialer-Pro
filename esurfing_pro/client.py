@@ -346,7 +346,7 @@ class ESurfingClient:
         return algo_id
 
     def _get_ticket(self) -> str:
-        """Step 6: 获取认证票据"""
+        """Step 6: 获取认证票据（带重试，应对服务器偶发空响应）"""
         req = TicketRequest(
             client_id=self.client_id,
             local_time=format_local_time(),
@@ -359,16 +359,51 @@ class ESurfingClient:
         xml_data = build_ticket_request(req)
         encrypted = self.cipher.encrypt(xml_data)
 
-        resp = self.network.post_raw(
-            self.ticket_url, encrypted, self.client_id, self.algo_id
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"Get ticket failed: {resp.status_code}")
+        # 服务器可能还没准备好，最多重试 3 次
+        last_error = None
+        for attempt in range(3):
+            if attempt > 0:
+                time.sleep(2 ** attempt)  # 2s, 4s 递进等待
 
-        decrypted = self.cipher.decrypt(resp.content)
-        ticket_resp = parse_ticket_response(decrypted)
-        logger.debug(f"Ticket: {ticket_resp.ticket[:20]}...")
-        return ticket_resp.ticket
+            resp = self.network.post_raw(
+                self.ticket_url, encrypted, self.client_id, self.algo_id
+            )
+            if resp.status_code != 200:
+                last_error = RuntimeError(f"Get ticket HTTP {resp.status_code}")
+                logger.warning(f"[user:{self.config.username}] "
+                               f"Ticket attempt {attempt + 1}: HTTP {resp.status_code}")
+                continue
+
+            # 检查响应是否为空
+            if not resp.content or len(resp.content) == 0:
+                last_error = RuntimeError("Ticket server returned empty body")
+                logger.warning(f"[user:{self.config.username}] "
+                               f"Ticket attempt {attempt + 1}: empty body")
+                continue
+
+            decrypted = self.cipher.decrypt(resp.content)
+            logger.debug(f"[user:{self.config.username}] "
+                         f"Ticket resp: raw={len(resp.content)}B, "
+                         f"decrypted={len(decrypted)}B")
+
+            if not decrypted or len(decrypted) == 0:
+                last_error = RuntimeError("Decrypted ticket response is empty")
+                logger.warning(f"[user:{self.config.username}] "
+                               f"Ticket attempt {attempt + 1}: empty after decrypt")
+                continue
+
+            try:
+                ticket_resp = parse_ticket_response(decrypted)
+                logger.debug(f"Ticket: {ticket_resp.ticket[:20]}...")
+                return ticket_resp.ticket
+            except Exception as e:
+                last_error = e
+                logger.warning(f"[user:{self.config.username}] "
+                               f"Ticket attempt {attempt + 1}: "
+                               f"parse failed: {e} | "
+                               f"raw={resp.content[:100]!r}")
+
+        raise last_error or RuntimeError("Get ticket failed after 3 attempts")
 
     def _login(self) -> LoginResponse:
         """Step 7: 登录认证"""
